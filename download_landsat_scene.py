@@ -10,7 +10,6 @@ import subprocess
 import optparse
 import datetime
 
-
 ###########################################################################
 class OptionParser (optparse.OptionParser):
 
@@ -22,7 +21,6 @@ class OptionParser (optparse.OptionParser):
             self.error("%s option not supplied" % option)
 
 #############################"Connection to Earth explorer with proxy
-
 def connect_earthexplorer_proxy(proxy_info,usgs):
     print "Establishing connection to Earthexplorer with proxy..."
     # contruction d'un "opener" qui utilise une connexion proxy avec autorisation
@@ -42,14 +40,13 @@ def connect_earthexplorer_proxy(proxy_info,usgs):
     f.close()
     
     if data.find('You must sign in as a registered user to download data or place orders for USGS EROS products')>0 :
-        print "Authentification failed"
+        print "Authentication failed"
         sys.exit(-1)
 
     return
 
 
 #############################"Connection to Earth explorer without proxy
-
 def connect_earthexplorer_no_proxy(usgs):
     print "Establishing connection to Earthexplorer..."
     opener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
@@ -59,59 +56,90 @@ def connect_earthexplorer_no_proxy(usgs):
     data = f.read()
     f.close()
     if data.find('You must sign in as a registered user to download data or place orders for USGS EROS products')>0 :
-        print "Authentification failed"
+        print "Authentication failed"
         sys.exit(-1)
     return
 
 #############################
-
 def sizeof_fmt(num):
     for x in ['bytes', 'KB', 'MB', 'GB', 'TB']:
-        if num < 1024.0:
+        if num < 1024.:
             return "%3.1f %s" % (num, x)
-        num /= 1024.0
+        num /= 1024.
 #############################
-def downloadChunks(url,rep,nom_fic):
+def downloadChunks(url, rep, nom_fic, size):
     """ Downloads large files in pieces
      inspired by http://josh.gourneau.com
     """
     
     try:
-        req = urllib2.urlopen(url)
-        #taille du fichier
+        downloaded = 0
+        CHUNK = 1024 * 1024 # * 8
+        
+#        req = urllib2.urlopen(url)
+        req = urllib2.Request(url)
+        opener = urllib2._opener # Re-use installed opener ;-)
+        req = opener.open(req)
+
         if (req.info().gettype()=='text/html'):
             print "erreur : le fichier est au format html"
             lignes=req.read()
             if lignes.find('Download Not Found')>0 :
                 raise TypeError
+            elif lignes.find('You must sign in as a registered user to download data or place orders for USGS EROS products') > 0:        
+                print "Authentication failed"
+                sys.exit(-1)
             else:
-                print lignes
-                print sys.exit(-1)
+                print >>sys.stderr, lignes
+                sys.exit(-1)
         total_size = int(req.info().getheader('Content-Length').strip())
-        if (total_size<50000):
+        print nom_fic, total_size
+        if total_size < 1<<16:
             print "Error: The file is too small to be a Landsat Image"
             print url
             sys.exit(-1)
-        print nom_fic,total_size
+        if total_size <= size:
+            print "Warning: File is already downloaded. Ignoring"
+            return
+        if size > 0:
+            print "Warning: File is partially downloaded. Resuming"
+            downloaded = size // CHUNK * CHUNK # Re-download last (partial) chunk
+            req.close()
+
+            req = urllib2.Request(url)
+            req.add_header("Range", "bytes=%s-" % (downloaded))
+            req = opener.open(req)
+            if (req.info().gettype()=='text/html'):
+                print "erreur : le fichier est au format html"
+                lignes=req.read()
+                if lignes.find('Download Not Found') > 0:
+                    raise TypeError
+                elif lignes.find('You must sign in as a registered user to download data or place orders for USGS EROS products') > 0:        
+                    print "Authentication failed"
+                    sys.exit(-1)
+                else:
+                    print >>sys.stderr, lignes
+                    sys.exit(-1)
         total_size_fmt = sizeof_fmt(total_size)
 
-        downloaded = 0
-        CHUNK = 1024 * 1024 *8
-        with open(rep+'/'+nom_fic, 'wb') as fp:
-            start = time.clock()
+        with open(rep+'/'+nom_fic, 'ab') as fp:
+            start = time.time()
+            start_downloaded = downloaded
+            fp.seek(downloaded)
             print('Downloading {0} ({1}):'.format(nom_fic, total_size_fmt))
             while True:
                 chunk = req.read(CHUNK)
                 downloaded += len(chunk)
                 done = int(50 * downloaded / total_size)
-                sys.stdout.write('\r[{1}{2}]{0:3.0f}% {3}ps'
+                sys.stdout.write('\r[{1}{2}]{0:3.0f}% {3}ps '
                              .format(math.floor((float(downloaded)
                                                  / total_size) * 100),
                                      '=' * done,
                                      ' ' * (50 - done),
-                                     sizeof_fmt((downloaded // (time.clock() - start)) / 8)))
+                                     sizeof_fmt((downloaded - start_downloaded) / (time.time() - start) )))
                 sys.stdout.flush()
-                if not chunk: break
+                if not chunk:
+                    break
                 fp.write(chunk)
     except urllib2.HTTPError, e:
         if e.code == 500:
@@ -122,6 +150,9 @@ def downloadChunks(url,rep,nom_fic):
     except urllib2.URLError, e:
         print "URL Error:",e.reason , url
         return False
+    except Exception, e:
+        print "Exception:", e
+        sys.exit(-1)
 
     return rep,nom_fic
 
@@ -137,9 +168,7 @@ def cycle_day(path):
     cycle_day_path=math.fmod(nb_days_after_day1,16)
     if path>=98: #change date line
         cycle_day_path+=1
-    return(cycle_day_path)
-
-
+    return cycle_day_path
 
 ###################
 def next_overpass(date1,path,sat):
@@ -162,7 +191,6 @@ def next_overpass(date1,path,sat):
     return(date_overpass)
 
 #############################"Unzip tgz file
-
 def unzipimage(tgzfile,outputdir):
     success=0
     if (os.path.exists(outputdir+'/'+tgzfile+'.tgz')):
@@ -197,7 +225,6 @@ def read_cloudcover_in_metadata(image_path):
     return float(cloud_cover)
 
 #############################"Check cloud cover limit
-
 def check_cloud_limit(imagepath,limit):
     removed=0
     cloudcover=read_cloudcover_in_metadata(imagepath)
@@ -208,12 +235,10 @@ def check_cloud_limit(imagepath,limit):
     return removed
 
 #############################"Write info to logfile
-
 def log(location,info):
     logfile = os.path.join(location,'log.txt')
     log = open(logfile, 'w')
     log.write('\n'+str(info))
-
 
 ######################################################################################
 ###############                       main                    ########################
@@ -278,9 +303,8 @@ def main():
     rep=options.output
     if not os.path.exists(rep):
         os.mkdir(rep)
-        if options.option=='liste':
-            if not os.path.exists(rep+'/LISTE'):
-                os.mkdir(rep+'/LISTE')
+    if options.option=='liste' and not os.path.exists(rep+'/LISTE'):
+        os.mkdir(rep+'/LISTE')
 
     # read password files
     try:
@@ -314,7 +338,7 @@ def main():
             print "error with proxy password file"
             sys.exit(-3)
 
-###########Telechargement des produits par scene
+    ###########Telechargement des produits par scene
     if options.option=='scene':
         produit=options.bird
         path=options.scene[0:3]
@@ -372,7 +396,8 @@ def main():
             for station in stations:
                 for version in ['00','01','02']:
                     nom_prod=produit+options.scene+date_asc+station+version
-                    tgzfile=os.path.join(rep_scene,nom_prod+'.tgz')
+                    tgzfile=os.path.join(rep_scene, nom_prod + '.tgz')
+                    tgzsize = -1
                     lsdestdir=os.path.join(rep_scene,nom_prod)
                     url="http://earthexplorer.usgs.gov/download/%s/%s/STANDARD/EE"%(repert,nom_prod)
                     print url
@@ -381,28 +406,24 @@ def main():
                         downloaded_ids.append(nom_prod)
                         check = 0
                     elif os.path.isfile(tgzfile):
-                        print '   product %s already downloaded'%nom_prod
-                        if options.unzip!= None:
-                            p=unzipimage(nom_prod,rep_scene)
-                            if p==1 and options.clouds!= None:
-                                check=check_cloud_limit(lsdestdir,options.clouds)
-                                if check==0:
-                                    downloaded_ids.append(nom_prod)
-                    else:
-                        try:
-                            downloadChunks(url,"%s"%rep_scene,nom_prod+'.tgz')
-                        except:
-                            print '   product %s not found'%nom_prod
-                            notfound = True
-                        if notfound != True and options.unzip!= None:
-                            p=unzipimage(nom_prod,rep_scene)
-                            if p==1 and options.clouds!= None:
-                                check=check_cloud_limit(lsdestdir,options.clouds)
-                                if check==0:
-                                    downloaded_ids.append(nom_prod)
+                        tgzsize = os.path.getsize(tgzfile)
+                    try:
+                        downloadChunks(url, rep_scene, nom_prod + '.tgz', tgzsize)
+                    except TypeError:
+                        print '   product %s not found'%nom_prod
+                        notfound = True
+                    except Exception as e:
+                        print 'Exception:', e
+                        sys.exit(-1)
+                    if notfound != True and options.unzip!= None:
+                        p=unzipimage(nom_prod,rep_scene)
+                        if p==1 and options.clouds!= None:
+                            check=check_cloud_limit(lsdestdir,options.clouds)
+                            if check==0:
+                                downloaded_ids.append(nom_prod)
         log(rep,downloaded_ids)
 
-###########Telechargement par liste
+    ###########Telechargement par liste
     if options.option=='liste':
         with file(options.fic_liste) as f:
             lignes=f.readlines()
@@ -423,15 +444,23 @@ def main():
                 os.mkdir(rep+'/'+site)
             url="http://earthexplorer.usgs.gov/download/%s/%s/STANDARD/EE"%(repert,produit)
             print 'url=',url
+            tgzfile = os.path.join(rep, site)
+            tgzfile = os.path.join(tgzfile, produit+'.tgz')
+            tgzsize = -1
+            if os.path.isfile(tgzfile):
+                tgzsize = os.path.getsize(tgzfile)
             try:
                 if options.proxy!=None :
                     connect_earthexplorer_proxy(proxy,usgs)
                 else:
                     connect_earthexplorer_no_proxy(usgs)
 
-                downloadChunks(url,rep+'/'+site,produit+'.tgz')
+                downloadChunks(url, rep+'/'+site, produit + '.tgz', tgzsize)
             except TypeError:
                 print 'produit %s non trouve'%produit
+            except Exception as e:
+                print 'Exception:', e
+                sys.exit(-1)
 
 if __name__ == "__main__":
     main()
