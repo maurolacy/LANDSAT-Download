@@ -15,37 +15,37 @@ import datetime
 class OptionParser (optparse.OptionParser):
 
     def check_required (self, opt):
-      option = self.get_option(opt)
+        option = self.get_option(opt)
 
-      # Assumes the option's 'default' is set to None!
-      if getattr(self.values, option.dest) is None:
-          self.error("%s option not supplied" % option)
+        # Assumes the option's 'default' is set to None!
+        if getattr(self.values, option.dest) is None:
+            self.error("%s option not supplied" % option)
 
 #############################"Connection to Earth explorer with proxy
 
 def connect_earthexplorer_proxy(proxy_info,usgs):
-     print "Establishing connection to Earthexplorer with proxy..."
-     # contruction d'un "opener" qui utilise une connexion proxy avec autorisation
-     proxy_support = urllib2.ProxyHandler({"http" : "http://%(user)s:%(pass)s@%(host)s:%(port)s" % proxy_info,
-     "https" : "http://%(user)s:%(pass)s@%(host)s:%(port)s" % proxy_info})
-     opener = urllib2.build_opener(proxy_support, urllib2.HTTPCookieProcessor)
+    print "Establishing connection to Earthexplorer with proxy..."
+    # contruction d'un "opener" qui utilise une connexion proxy avec autorisation
+    proxy_support = urllib2.ProxyHandler({"http" : "http://%(user)s:%(pass)s@%(host)s:%(port)s" % proxy_info,
+    "https" : "http://%(user)s:%(pass)s@%(host)s:%(port)s" % proxy_info})
+    opener = urllib2.build_opener(proxy_support, urllib2.HTTPCookieProcessor)
+    
+    # installation
+    urllib2.install_opener(opener)
 
-     # installation
-     urllib2.install_opener(opener)
-
-     # parametres de connection
-     params = urllib.urlencode(dict(username=usgs['account'], password=usgs['passwd']))
-
-     # utilisation
-     f = opener.open('https://earthexplorer.usgs.gov/login', params)
-     data = f.read()
-     f.close()
-
-     if data.find('You must sign in as a registered user to download data or place orders for USGS EROS products')>0 :
+    # parametres de connection
+    params = urllib.urlencode(dict(username=usgs['account'], password=usgs['passwd']))
+    
+    # utilisation
+    f = opener.open('https://earthexplorer.usgs.gov/login', params)
+    data = f.read()
+    f.close()
+    
+    if data.find('You must sign in as a registered user to download data or place orders for USGS EROS products')>0 :
         print "Authentification failed"
         sys.exit(-1)
 
-     return
+    return
 
 
 #############################"Connection to Earth explorer without proxy
@@ -72,58 +72,58 @@ def sizeof_fmt(num):
         num /= 1024.0
 #############################
 def downloadChunks(url,rep,nom_fic):
-  """ Downloads large files in pieces
-   inspired by http://josh.gourneau.com
-  """
+    """ Downloads large files in pieces
+     inspired by http://josh.gourneau.com
+    """
+    
+    try:
+        req = urllib2.urlopen(url)
+        #taille du fichier
+        if (req.info().gettype()=='text/html'):
+            print "erreur : le fichier est au format html"
+            lignes=req.read()
+            if lignes.find('Download Not Found')>0 :
+                raise TypeError
+            else:
+                print lignes
+                print sys.exit(-1)
+        total_size = int(req.info().getheader('Content-Length').strip())
+        if (total_size<50000):
+            print "Error: The file is too small to be a Landsat Image"
+            print url
+            sys.exit(-1)
+        print nom_fic,total_size
+        total_size_fmt = sizeof_fmt(total_size)
 
-  try:
-    req = urllib2.urlopen(url)
-    #taille du fichier
-    if (req.info().gettype()=='text/html'):
-      print "erreur : le fichier est au format html"
-      lignes=req.read()
-      if lignes.find('Download Not Found')>0 :
-            raise TypeError
-      else:
-        print lignes
-        print sys.exit(-1)
-    total_size = int(req.info().getheader('Content-Length').strip())
-    if (total_size<50000):
-       print "Error: The file is too small to be a Landsat Image"
-       print url
-       sys.exit(-1)
-    print nom_fic,total_size
-    total_size_fmt = sizeof_fmt(total_size)
-
-    downloaded = 0
-    CHUNK = 1024 * 1024 *8
-    with open(rep+'/'+nom_fic, 'wb') as fp:
-        start = time.clock()
-        print('Downloading {0} ({1}):'.format(nom_fic, total_size_fmt))
-        while True:
-         chunk = req.read(CHUNK)
-         downloaded += len(chunk)
-         done = int(50 * downloaded / total_size)
-         sys.stdout.write('\r[{1}{2}]{0:3.0f}% {3}ps'
+        downloaded = 0
+        CHUNK = 1024 * 1024 *8
+        with open(rep+'/'+nom_fic, 'wb') as fp:
+            start = time.clock()
+            print('Downloading {0} ({1}):'.format(nom_fic, total_size_fmt))
+            while True:
+                chunk = req.read(CHUNK)
+                downloaded += len(chunk)
+                done = int(50 * downloaded / total_size)
+                sys.stdout.write('\r[{1}{2}]{0:3.0f}% {3}ps'
                              .format(math.floor((float(downloaded)
                                                  / total_size) * 100),
                                      '=' * done,
                                      ' ' * (50 - done),
                                      sizeof_fmt((downloaded // (time.clock() - start)) / 8)))
-         sys.stdout.flush()
-         if not chunk: break
-         fp.write(chunk)
-  except urllib2.HTTPError, e:
-       if e.code == 500:
+                sys.stdout.flush()
+                if not chunk: break
+                fp.write(chunk)
+    except urllib2.HTTPError, e:
+        if e.code == 500:
             pass # File doesn't exist
-       else:
+        else:
             print "HTTP Error:", e.code , url
-       return False
-  except urllib2.URLError, e:
-    print "URL Error:",e.reason , url
-    return False
+        return False
+    except urllib2.URLError, e:
+        print "URL Error:",e.reason , url
+        return False
 
-  return rep,nom_fic
+    return rep,nom_fic
 
 
 ##################
