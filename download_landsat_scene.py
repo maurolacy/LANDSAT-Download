@@ -5,7 +5,7 @@
     Landsat Data download from earth explorer
     Incorporates jake-Brinkmann improvements
 """
-import os,sys,math,urllib2,urllib,time,math,shutil
+import os,sys,urllib2,urllib,time,math,shutil
 import subprocess
 import optparse
 import datetime
@@ -181,7 +181,7 @@ def unzipimage(tgzfile,outputdir):
 
 #############################"Read image metadata
 def read_cloudcover_in_metadata(image_path):
-    output_list=[]
+#    output_list=[]
     fields = ['CLOUD_COVER']
     cloud_cover=0
     imagename=os.path.basename(os.path.normpath(image_path))
@@ -221,7 +221,6 @@ def log(location,info):
 
 ################Lecture des arguments
 def main():
-    variable1='Teste'
     if len(sys.argv) == 1:
         prog = os.path.basename(sys.argv[0])
         print '      '+sys.argv[0]+' [options]'
@@ -264,7 +263,7 @@ def main():
 
 
 
-        (options, args) = parser.parse_args()
+        options, _ = parser.parse_args()
         parser.check_required("-o")
         if options.option=='scene':
             parser.check_required("-d")
@@ -319,7 +318,7 @@ def main():
     if options.option=='scene':
         produit=options.bird
         path=options.scene[0:3]
-        row=options.scene[3:6]
+#        row=options.scene[3:6]
 
         year_start =int(options.start_date[0:4])
         month_start=int(options.start_date[4:6])
