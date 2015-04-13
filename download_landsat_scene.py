@@ -527,22 +527,35 @@ def main():
             print '   product %s already downloaded and unzipped'%nom_prod
             downloaded_ids.append(nom_prod)
             check = 0						
-        elif os.path.isfile(tgzfile):
-            print '   product %s already downloaded'%nom_prod
-            if options.unzip!= None:
-                p=unzipimage(nom_prod,rep_scene)
-                if p==1:
-                    downloaded_ids.append(nom_prod)	
-                    check = 0						
+#        elif os.path.isfile(tgzfile):
+#            print '   product %s already downloaded'%nom_prod
+#            if options.unzip!= None:
+#                p=unzipimage(nom_prod,rep_scene)
+#                if p==1:
+#                    downloaded_ids.append(nom_prod)	
+#                    check = 0						
         else:
             while check == 1:
                 for collectionid in repert:
+                    tgzfile=os.path.join(rep_scene, nom_prod + '.tgz')
+                    tgzsize = -1
+                    lsdestdir=os.path.join(rep_scene,nom_prod)
                     url="http://earthexplorer.usgs.gov/download/%s/%s/STANDARD/EE"%(collectionid,nom_prod)				
+                    print url
+                    if os.path.exists(lsdestdir):
+                        print '   product %s already downloaded and unzipped'%nom_prod
+                        downloaded_ids.append(nom_prod)
+                        check = 0
+                    elif os.path.isfile(tgzfile):
+                        tgzsize = os.path.getsize(tgzfile)
                     try:
-                        downloadChunks(url,"%s"%rep_scene,nom_prod+'.tgz')
-                    except:
+                        downloadChunks(url, rep_scene, nom_prod + '.tgz', tgzsize)
+                    except TypeError:
                         print '   product %s not found'%nom_prod
                         notfound = True
+                    except Exception as e:
+                        print 'Exception:', e
+                        sys.exit(-1)
                     if notfound != True and options.unzip!= None:
                         p=unzipimage(nom_prod,rep_scene)
                         if p==1 and options.clouds!= None:					
