@@ -9,6 +9,7 @@ import os,sys,urllib2,urllib,time,math,shutil
 import subprocess
 import optparse
 import datetime
+import csv
 
 ###########################################################################
 class OptionParser (optparse.OptionParser):
@@ -190,6 +191,21 @@ def next_overpass(date1,path,sat):
         date_overpass=date1
     return(date_overpass)
 
+#############################"Get metadata files
+def getmetadatafiles(destdir,option):
+    print 'Verifying catalog metadata files...'
+    home = 'http://landsat.usgs.gov/metadata_service/bulk_metadata_files/'
+    links=['LANDSAT_8.csv','LANDSAT_ETM.csv','LANDSAT_ETM_SLC_OFF.csv','LANDSAT_TM-1980-1989.csv','LANDSAT_TM-1990-1999.csv','LANDSAT_TM-2000-2009.csv','LANDSAT_TM-2010-2012.csv']
+    for l in links:
+        destfile = os.path.join(destdir,l)
+        url = home+l
+        if option=='noupdate':
+            if not os.path.exists(destfile):
+                print 'Downloading %s for the first time...'%(l)
+                urllib.urlretrieve (url, destfile)
+        elif option=='update':	
+            urllib.urlretrieve (url, destfile)
+
 #############################"Unzip tgz file
 def unzipimage(tgzfile,outputdir):
     success=0
@@ -234,6 +250,29 @@ def check_cloud_limit(imagepath,limit):
         removed=1
     return removed
 
+#############################"Find image with desired specs in usgs entire collection metadata
+
+def find_in_collection_metadata(collection_file,cc_limit,date_start,date_end,wr2path,wr2row):
+    print "Searching for images in catalog..."
+    cloudcoverlist = []
+    cc_values = []	
+    with open(collection_file) as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            year_acq =int(row['acquisitionDate'][0:4])
+            month_acq=int(row['acquisitionDate'][5:7])
+            day_acq  =int(row['acquisitionDate'][8:10])
+            acqdate=datetime.datetime(year_acq,month_acq, day_acq)
+            if 	int(row['path'])==int(wr2path) and int(row['row'])==int(wr2row) and row['DATA_TYPE_L1']!='PR' and float(row['cloudCoverFull'])<=cc_limit and date_start<acqdate<date_end:
+                cloudcoverlist.append(row['cloudCoverFull'] + '--' + row['sceneID'])
+                cc_values.append(float(row['cloudCoverFull']))				
+            else:
+                sceneID=''
+    for i in cloudcoverlist:
+        if float(i.split('--')[0])==min(cc_values):
+            sceneID = i.split('--')[1]
+    return sceneID
+
 #############################"Write info to logfile
 def log(location,info):
     logfile = os.path.join(location,'log.txt')
@@ -251,16 +290,17 @@ def main():
         print '      '+sys.argv[0]+' [options]'
         print "     Aide : ", prog, " --help"
         print "        ou : ", prog, " -h"
-        print "example (scene): python %s -o scene -a 2013 -d 360 -f 365 -s 199030 -u usgs.txt"%sys.argv[0]
-        print "example (scene): python %s -z unzip -b LT5 -o scene -d 20101001 -f 20101231 -s 203034 -u usgs.txt --output /outputdir/"%sys.argv[0]
-        print "example (scene): python %s -b LE7 -o scene -d 20141201 -f 20141231 -s 191025 -u usgs.txt --output . --dir=3373 --station SG1"%sys.argv[0]
-        print "example (liste): python %s -o liste -l /home/hagolle/LANDSAT/liste_landsat8_site.txt -u usgs.txt"%sys.argv[0]
+        print "example (scene)  : python %s -o scene -a 2013 -d 360 -f 365 -s 199030 -u usgs.txt"%sys.argv[0]
+        print "example (scene)  : python %s -z unzip -b LT5 -o scene -d 20101001 -f 20101231 -s 203034 -u usgs.txt --output /outputdir/"%sys.argv[0]
+        print "example (scene)  : python %s -b LE7 -o scene -d 20141201 -f 20141231 -s 191025 -u usgs.txt --output . --dir=3373 --station SG1"%sys.argv[0]
+        print "example (liste)  : python %s -o liste -l /home/hagolle/LANDSAT/liste_landsat8_site.txt -u usgs.txt"%sys.argv[0]
+        print "example (catalog): python %s -b LE7 -o catalog -c 0.20 -d 20141201 -f 20141231 -s 191025 -u usgs.txt"%sys.argv[0]
         sys.exit(-1)
     else:
         usage = "usage: %prog [options] "
         parser = OptionParser(usage=usage)
         parser.add_option("-o", "--option", dest="option", action="store", type="choice", \
-                help="scene or liste", choices=['scene','liste'],default=None)
+			    help="scene or liste or catalog", choices=['scene','liste','catalog'],default=None)
         parser.add_option("-l", "--liste", dest="fic_liste", action="store", type="string", \
                 help="list filename",default=None)
         parser.add_option("-s", "--scene", dest="scene", action="store", type="string", \
@@ -285,6 +325,8 @@ def main():
                 help="Dir number where files  are stored at USGS",default=None)
         parser.add_option("--station", dest="station", action="store", type="string", \
                 help="Station acronym (3 letters) of the receiving station where the file is downloaded",default=None)
+        parser.add_option("-k", "--updatecatalogfiles", dest="updatecatalogfiles", action="store", type="choice", \
+			    help="Update catalog metadata files", choices=['update','noupdate'],default='noupdate')			
 
 
 
@@ -338,7 +380,9 @@ def main():
             print "error with proxy password file"
             sys.exit(-3)
 
-    ###########Telechargement des produits par scene
+
+
+##########Telechargement des produits par scene
     if options.option=='scene':
         produit=options.bird
         path=options.scene[0:3]
@@ -366,9 +410,9 @@ def main():
 
         rep_scene = "%s/SCENES/%s_%s/GZ" % (rep, path, row)
 #        rep_scene="%s"%(rep)    #Modified vbnunes
-        print rep_scene
         if not(os.path.exists(rep_scene)):
             os.makedirs(rep_scene)
+
         if produit.startswith('LC8'):
             repert='4923'
             stations=['LGN']
@@ -423,7 +467,91 @@ def main():
                                 downloaded_ids.append(nom_prod)
         log(rep,downloaded_ids)
 
-    ###########Telechargement par liste
+##########Telechargement des produits par catalog metadata search
+    if options.option=='catalog':
+        produit=options.bird
+        path=options.scene[0:3]
+        row=options.scene[3:6]
+    
+        year_start =int(options.start_date[0:4])
+        month_start=int(options.start_date[4:6])
+        day_start  =int(options.start_date[6:8])
+        date_start=datetime.datetime(year_start,month_start, day_start)
+        downloaded_ids=[]
+
+        if options.end_date!= None:
+            year_end =int(options.end_date[0:4])
+            month_end=int(options.end_date[4:6])
+            day_end  =int(options.end_date[6:8])
+            date_end =datetime.datetime(year_end,month_end, day_end)
+        else:
+            date_end=datetime.datetime.now()
+
+        if options.proxy!=None:
+            connect_earthexplorer_proxy(proxy,usgs)
+        else:
+            connect_earthexplorer_no_proxy(usgs)	
+
+        # rep_scene="%s/SCENES/%s_%s/GZ"%(rep,path,row)   #Original
+        rep_scene="%s"%(rep)	#Modified vbnunes
+        if not(os.path.exists(rep_scene)):
+            os.makedirs(rep_scene)
+
+        getmetadatafiles(os.path.dirname(os.path.realpath(__file__)), options.updatecatalogfiles)			
+
+        if produit.startswith('LC8'):
+            repert=['4923']
+            collection_file=os.path.join(os.path.dirname(os.path.realpath(__file__)),'LANDSAT_8.csv')
+        if produit.startswith('LE7'):
+            repert=['3372','3373']
+            collection_file=os.path.join(os.path.dirname(os.path.realpath(__file__)),'LANDSAT_ETM.csv')			
+        if produit.startswith('LT5'):
+            repert=['3119','4345']
+            if 2000<=int(year_start)<=2009:
+                collection_file=os.path.join(os.path.dirname(os.path.realpath(__file__)),'LANDSAT_TM-2000-2009.csv')
+            if 2010<=int(year_start)<=2012:
+                collection_file=os.path.join(os.path.dirname(os.path.realpath(__file__)),'LANDSAT_TM-2010-2012.csv')				
+            
+        check=1
+
+        notfound = False		
+
+        nom_prod=find_in_collection_metadata(collection_file,options.clouds,date_start,date_end,path,row)
+        if nom_prod=='':
+            sys.exit('No image was found in the catalog with the given specifications! Exiting...')
+        else:				
+            tgzfile=os.path.join(rep_scene,nom_prod+'.tgz')
+            lsdestdir=os.path.join(rep_scene,nom_prod)
+
+        if os.path.exists(lsdestdir):
+            print '   product %s already downloaded and unzipped'%nom_prod
+            downloaded_ids.append(nom_prod)
+            check = 0						
+        elif os.path.isfile(tgzfile):
+            print '   product %s already downloaded'%nom_prod
+            if options.unzip!= None:
+                p=unzipimage(nom_prod,rep_scene)
+                if p==1:
+                    downloaded_ids.append(nom_prod)	
+                    check = 0						
+        else:
+            while check == 1:
+                for collectionid in repert:
+                    url="http://earthexplorer.usgs.gov/download/%s/%s/STANDARD/EE"%(collectionid,nom_prod)				
+                    try:
+                        downloadChunks(url,"%s"%rep_scene,nom_prod+'.tgz')
+                    except:
+                        print '   product %s not found'%nom_prod
+                        notfound = True
+                    if notfound != True and options.unzip!= None:
+                        p=unzipimage(nom_prod,rep_scene)
+                        if p==1 and options.clouds!= None:					
+                            check=check_cloud_limit(lsdestdir,options.clouds)
+                            if check==0:
+                                downloaded_ids.append(nom_prod)			
+        log(rep,downloaded_ids)		
+
+##########Telechargement par liste
     if options.option=='liste':
         with file(options.fic_liste) as f:
             lignes=f.readlines()
