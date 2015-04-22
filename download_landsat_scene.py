@@ -230,6 +230,7 @@ def read_cloudcover_in_metadata(image_path):
     cloud_cover=0
     imagename=os.path.basename(os.path.normpath(image_path))
     metadatafile= os.path.join(image_path,imagename+'_MTL.txt')
+    print 'metadata file:', metadatafile
     metadata = open(metadatafile, 'r')
     # metadata.replace('\r','')
     for line in metadata:
@@ -246,7 +247,7 @@ def check_cloud_limit(imagepath,limit):
     cloudcover=read_cloudcover_in_metadata(imagepath)
     if cloudcover>limit:
         shutil.rmtree(imagepath)
-        print "Image was removed because the cloud cover value of " + str(cloudcover) + " exceeded the limit defined by the user!"
+        print "Image was removed because the cloud cover value of %.2f%% exceeded the limit defined by the user(%.2f%%)" % (cloudcover, limit)
         removed=1
     return removed
 
@@ -441,30 +442,32 @@ def main():
                 for version in ['00','01','02']:
                     nom_prod=produit+options.scene+date_asc+station+version
                     tgzfile=os.path.join(rep_scene, nom_prod + '.tgz')
-                    tgzsize = -1
                     lsdestdir=os.path.join(rep_scene,nom_prod)
                     url="http://earthexplorer.usgs.gov/download/%s/%s/STANDARD/EE"%(repert,nom_prod)
                     print url
+                    print "dest dir:", lsdestdir
                     if os.path.exists(lsdestdir):
                         print '   product %s already downloaded and unzipped'%nom_prod
                         downloaded_ids.append(nom_prod)
                         check = 0
-                    elif os.path.isfile(tgzfile):
-                        tgzsize = os.path.getsize(tgzfile)
-                    try:
-                        downloadChunks(url, rep_scene, nom_prod + '.tgz', tgzsize)
-                    except TypeError:
-                        print '   product %s not found'%nom_prod
-                        notfound = True
-                    except Exception as e:
-                        print 'Exception:', e
-                        sys.exit(-1)
-                    if notfound != True and options.unzip!= None:
-                        p=unzipimage(nom_prod,rep_scene)
-                        if p==1 and options.clouds!= None:
-                            check=check_cloud_limit(lsdestdir,options.clouds)
-                            if check==0:
-                                downloaded_ids.append(nom_prod)
+                    else:
+                        tgzsize = -1
+                        if os.path.isfile(tgzfile):
+                            tgzsize = os.path.getsize(tgzfile)
+                        try:
+                            downloadChunks(url, rep_scene, nom_prod + '.tgz', tgzsize)
+                        except TypeError:
+                            print '   product %s not found'%nom_prod
+                            notfound = True
+                        except Exception as e:
+                            print 'Exception:', e
+                            sys.exit(-1)
+                        if notfound != True and options.unzip!= None:
+                            unzipimage(nom_prod,rep_scene)
+                    if options.clouds!= None and os.path.exists(lsdestdir):
+                        check=check_cloud_limit(lsdestdir,options.clouds)
+                        if check==0:
+                            downloaded_ids.append(nom_prod)
         log(rep,downloaded_ids)
 
 ##########Telechargement des produits par catalog metadata search
@@ -492,8 +495,8 @@ def main():
         else:
             connect_earthexplorer_no_proxy(usgs)	
 
-        # rep_scene="%s/SCENES/%s_%s/GZ"%(rep,path,row)   #Original
-        rep_scene="%s"%(rep)	#Modified vbnunes
+        rep_scene="%s/SCENES/%s_%s/GZ"%(rep,path,row)   #Original
+        #rep_scene="%s"%(rep)	#Modified vbnunes
         if not(os.path.exists(rep_scene)):
             os.makedirs(rep_scene)
 
@@ -546,22 +549,24 @@ def main():
                         print '   product %s already downloaded and unzipped'%nom_prod
                         downloaded_ids.append(nom_prod)
                         check = 0
-                    elif os.path.isfile(tgzfile):
-                        tgzsize = os.path.getsize(tgzfile)
-                    try:
-                        downloadChunks(url, rep_scene, nom_prod + '.tgz', tgzsize)
-                    except TypeError:
-                        print '   product %s not found'%nom_prod
-                        notfound = True
-                    except Exception as e:
-                        print 'Exception:', e
-                        sys.exit(-1)
-                    if notfound != True and options.unzip!= None:
-                        p=unzipimage(nom_prod,rep_scene)
-                        if p==1 and options.clouds!= None:					
-                            check=check_cloud_limit(lsdestdir,options.clouds)
-                            if check==0:
-                                downloaded_ids.append(nom_prod)			
+                    else:
+                        tgzsize = -1
+                        if os.path.isfile(tgzfile):
+                            tgzsize = os.path.getsize(tgzfile)
+                        try:
+                            downloadChunks(url, rep_scene, nom_prod + '.tgz', tgzsize)
+                        except TypeError:
+                            print '   product %s not found'%nom_prod
+                            notfound = True
+                        except Exception as e:
+                            print 'Exception:', e
+                            sys.exit(-1)
+                        if notfound != True and options.unzip!= None:
+                            unzipimage(nom_prod,rep_scene)
+                    if options.clouds!= None and os.path.exists(lsdestdir):
+                        check=check_cloud_limit(lsdestdir,options.clouds)
+                        if check==0:
+                            downloaded_ids.append(nom_prod)			
         log(rep,downloaded_ids)		
 
 ##########Telechargement par liste
