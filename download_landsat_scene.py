@@ -103,7 +103,7 @@ def downloadChunks(url, rep, nom_fic, size):
             print "Warning: File is already downloaded. Ignoring"
             return
         if size > 0:
-            print "Warning: File is partially downloaded. Resuming"
+            print "Warning: File is partially downloaded..."
             downloaded = size // CHUNK * CHUNK # Re-download last (partial) chunk
             req.close()
 
@@ -121,12 +121,23 @@ def downloadChunks(url, rep, nom_fic, size):
                 else:
                     print >>sys.stderr, lignes
                     sys.exit(-1)
+            # Check if the server supports range headers
+            code = int(req.getcode())
+            if code == 206:                       
+                print "Resuming download"
+            elif code == 200:
+                print "Server does not supports download resuming... re-downloading"
+                downloaded = 0
+            else:
+                print "Unexpected HTTP request code: %d. Aborting" % code
+                sys.exit(-1)
+
         total_size_fmt = sizeof_fmt(total_size)
 
         with open(rep+'/'+nom_fic, 'ab') as fp:
             start = time.time()
             start_downloaded = downloaded
-            fp.seek(downloaded)
+            fp.truncate(downloaded)
             print('Downloading {0} ({1}):'.format(nom_fic, total_size_fmt))
             while True:
                 chunk = req.read(CHUNK)
