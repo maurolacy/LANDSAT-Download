@@ -53,7 +53,7 @@ def connect_earthexplorer_no_proxy(usgs):
     opener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
     urllib2.install_opener(opener)
     params = urllib.urlencode(dict(username=usgs['account'],password= usgs['passwd']))
-    f = opener.open("https://earthexplorer.usgs.gov/login/", params)
+    f = opener.open("https://ers.cr.usgs.gov/login", params)
     data = f.read()
     f.close()
     if data.find('You must sign in as a registered user to download data or place orders for USGS EROS products')>0 :
