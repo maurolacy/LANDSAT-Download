@@ -103,8 +103,12 @@ def downloadChunks(url, rep, nom_fic, size):
             else:
                 print >>sys.stderr, lignes
                 sys.exit(-1)
-        total_size = int(req.info().getheader('Content-Length').strip())
-        print nom_fic, total_size
+        length = req.info().getheader('Content-Length')
+        if length:
+            total_size = int(length)
+        else:
+            total_size = float("inf")
+#        print nom_fic, total_size
         if total_size < 1<<16:
             print "Error: The file is too small to be a Landsat Image"
             print url
