@@ -40,10 +40,9 @@ def connect_earthexplorer_proxy(proxy_info,usgs):
     data = f.read()
     f.close()
     
-    if data.find('You must sign in as a registered user to download data or place orders for USGS EROS products')>0 :
+    if not logged_in(data):
         print "Authentication failed"
         sys.exit(-1)
-
     return
 
 
@@ -56,7 +55,7 @@ def connect_earthexplorer_no_proxy(usgs):
     f = opener.open("https://ers.cr.usgs.gov/login", params)
     data = f.read()
     f.close()
-    if data.find('You must sign in as a registered user to download data or place orders for USGS EROS products')>0 :
+    if not logged_in(data):
         print "Authentication failed"
         sys.exit(-1)
     return
@@ -67,6 +66,12 @@ def sizeof_fmt(num):
         if num < 1024.:
             return "%3.1f %s" % (num, x)
         num /= 1024.
+
+#############################
+def logged_in(lines):
+    return lines.find('sign in as a registered user to download data or place orders for USGS EROS products') < 0 and \
+        lines.find('sign in with your existing USGS registered username and password') < 0
+
 #############################
 def downloadChunks(url, rep, nom_fic, size):
     """ Downloads large files in pieces
@@ -82,12 +87,17 @@ def downloadChunks(url, rep, nom_fic, size):
         opener = urllib2._opener # Re-use installed opener ;-)
         req = opener.open(req)
 
+        code = int(req.getcode())
+        if code != 206 and code != 200:             
+            print >>sys.stderr, "Unexpected http code: %d. Aborting" % code
+            sys.exit(-1)
+
         if (req.info().gettype()=='text/html'):
             print "erreur : le fichier est au format html"
             lignes=req.read()
             if lignes.find('Download Not Found')>0 :
                 raise TypeError
-            elif lignes.find('You must sign in as a registered user to download data or place orders for USGS EROS products') > 0:        
+            elif not logged_in(lignes):
                 print "Authentication failed"
                 sys.exit(-1)
             else:
@@ -115,7 +125,7 @@ def downloadChunks(url, rep, nom_fic, size):
                 lignes=req.read()
                 if lignes.find('Download Not Found') > 0:
                     raise TypeError
-                elif lignes.find('You must sign in as a registered user to download data or place orders for USGS EROS products') > 0:        
+                elif not logged_in(lignes):
                     print "Authentication failed"
                     sys.exit(-1)
                 else:
@@ -167,7 +177,6 @@ def downloadChunks(url, rep, nom_fic, size):
         sys.exit(-1)
 
     return rep,nom_fic
-
 
 ##################
 def cycle_day(path):
